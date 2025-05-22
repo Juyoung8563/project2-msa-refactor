@@ -60,9 +60,6 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
     implementation 'io.netty:netty-resolver-dns-native-macos:4.2.0.Final:osx-aarch_64'
 
-    implementation 'org.apache.tika:tika-core:3.1.0'
-    implementation 'org.apache.tika:tika-parsers-standard-package:3.1.0'
-    implementation 'org.springframework.boot:spring-boot-starter-security'
 }
 
 tasks.named('test') {
