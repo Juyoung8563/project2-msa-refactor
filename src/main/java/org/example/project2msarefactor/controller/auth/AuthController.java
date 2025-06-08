@@ -7,6 +7,7 @@ import org.example.project2msarefactor.auth.jwt.JwtTokenProvider;
 import org.example.project2msarefactor.model.dto.auth.JoinDTO;
 import org.example.project2msarefactor.model.dto.auth.LoginDTO;
 import org.example.project2msarefactor.service.account.UserService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -18,6 +19,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 
@@ -30,6 +33,9 @@ public class AuthController {
     private final JwtTokenProvider jwtTokenProvider;
     private final UserService userService;
 
+    @Value("${app.cookie.domain:localhost}") // application.yml에서 설정할 도메인 주입
+    private String cookieDomain;
+
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginDTO dto, HttpServletResponse response) {
         try {
@@ -38,11 +44,13 @@ public class AuthController {
             );
 
             String token = jwtTokenProvider.generateToken(authentication, List.of("USER"));
-            Cookie cookie = new Cookie("token", token);
-            cookie.setHttpOnly(true);
-            cookie.setPath("/");
-            cookie.setMaxAge((int) Duration.ofHours(1).getSeconds());
-            response.addCookie(cookie);
+
+            // ✅ HttpOnly, Secure, SameSite=None 쿠키 설정 (OAuth2LoginSuccessHandler와 동일하게)
+            String cookieHeader = String.format("token=%s; Max-Age=%d; Path=/; HttpOnly; Domain=%s; Secure; SameSite=None",
+                    URLEncoder.encode(token, StandardCharsets.UTF_8),
+                    (int) Duration.ofHours(1).getSeconds(),
+                    cookieDomain);
+            response.addHeader("Set-Cookie", cookieHeader);
 
             return ResponseEntity.ok().build();
         } catch (IllegalArgumentException e) {
@@ -64,18 +72,14 @@ public class AuthController {
 
     @PostMapping("/logout")
     public ResponseEntity<Void> logout(HttpServletResponse response) {
-        // 쿠키 삭제
-        Cookie cookie = new Cookie("token", null);
-        cookie.setHttpOnly(true);
-        cookie.setPath("/");
-        cookie.setMaxAge(0); // 즉시 만료
-
-        response.addCookie(cookie);
+        // 쿠키 삭제 시에도 HttpOnly, Secure, Domain, Path를 일치시켜야 정확히 삭제됨
+        String cookieHeader = String.format("token=; Max-Age=0; Path=/; HttpOnly; Domain=%s; Secure; SameSite=None",
+                cookieDomain);
+        response.addHeader("Set-Cookie", cookieHeader);
 
         // 시큐리티 컨텍스트 초기화 (optional)
         SecurityContextHolder.clearContext();
 
         return ResponseEntity.noContent().build();
     }
-
 }

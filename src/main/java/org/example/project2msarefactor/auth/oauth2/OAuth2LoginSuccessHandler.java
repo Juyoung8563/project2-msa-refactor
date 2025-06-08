@@ -30,6 +30,10 @@ public class OAuth2LoginSuccessHandler implements org.springframework.security.w
     @Value("${front-end.redirect:/profile/view}")
     private String frontRedirectUrl;
 
+    // Render 서비스의 경우, onrender.com 도메인을 공유하기 위해 상위 도메인 설정이 필요
+    @Value("${app.cookie.domain:localhost}") // application.yml 에서 설정할 도메인 주입
+    private String cookieDomain;
+
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request,
                                         HttpServletResponse response,
@@ -47,8 +51,21 @@ public class OAuth2LoginSuccessHandler implements org.springframework.security.w
         cookie.setHttpOnly(true);
         cookie.setPath("/");
         cookie.setMaxAge(60 * 60); // 1시간
-        response.addCookie(cookie);
-        log.info("🔁 쿠키에 토큰 설정 완료");
+
+        // 🔥 Render 서비스의 경우, 상위 도메인 (예: .onrender.com)을 설정하여 다른 서비스 페이지에서도 쿠키를 공유
+        cookie.setDomain(cookieDomain);
+
+        // 🔥 HTTPS 환경에서만 쿠키를 전송하도록 설정 (필수)
+        cookie.setSecure(true); // Render는 HTTPS를 사용하므로 true로 설정
+
+        // 🔥 SameSite=None 설정 추가 (CORS 환경에서 쿠키 전송을 허용)
+        String cookieHeader = String.format("token=%s; Max-Age=%d; Path=/; HttpOnly; Domain=%s; Secure; SameSite=None",
+                URLEncoder.encode(token, StandardCharsets.UTF_8),
+                cookie.getMaxAge(),
+                cookie.getDomain());
+        response.addHeader("Set-Cookie", cookieHeader);
+        log.info("🔁 HttpOnly, Secure, SameSite=None 쿠키 설정 완료 (도메인: {})", cookieDomain);
+
 
         // ✅ 사용자 프로필 존재 여부 확인
         var user = usersRepository.findByEmail(email).orElse(null);
