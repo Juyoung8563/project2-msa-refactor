@@ -30,8 +30,7 @@ public class OAuth2LoginSuccessHandler implements org.springframework.security.w
     @Value("${front-end.redirect:/profile/view}")
     private String frontRedirectUrl;
 
-    // Render 서비스의 경우, onrender.com 도메인을 공유하기 위해 상위 도메인 설정이 필요
-    @Value("${app.cookie.domain:localhost}") // application.yml 에서 설정할 도메인 주입
+    @Value("${app.cookie.domain:localhost}")
     private String cookieDomain;
 
     @Override
@@ -42,38 +41,61 @@ public class OAuth2LoginSuccessHandler implements org.springframework.security.w
         String email = authentication.getName();
         log.info("✅ OAuth2 로그인 성공: {}", email);
 
-        // ✅ JWT 토큰 생성
         String token = jwtTokenProvider.generateToken(authentication, List.of("USER"));
-        log.info("✅ JWT 토큰 발급 완료: {}", token);
+        log.info("✅ JWT 토큰 발급 완료: {}", token.substring(0, Math.min(20, token.length())) + "...");
 
-        // ✅ HttpOnly 쿠키로 토큰 설정
-        Cookie cookie = new Cookie("token", URLEncoder.encode(token, StandardCharsets.UTF_8));
-        cookie.setHttpOnly(true);
-        cookie.setPath("/");
-        cookie.setMaxAge(60 * 60); // 1시간
+        // 현재 호스트 정보 로깅
+        String host = request.getHeader("Host");
+        String scheme = request.getScheme();
+        boolean isHttps = "https".equals(scheme);
+        log.info("🌐 현재 요청 정보 - Host: {}, Scheme: {}, HTTPS: {}", host, scheme, isHttps);
 
-        // 🔥 Render 서비스의 경우, 상위 도메인 (예: .onrender.com)을 설정하여 다른 서비스 페이지에서도 쿠키를 공유
-        cookie.setDomain(cookieDomain);
+        String encodedToken = URLEncoder.encode(token, StandardCharsets.UTF_8);
 
-        // 🔥 HTTPS 환경에서만 쿠키를 전송하도록 설정 (필수)
-        cookie.setSecure(true); // Render는 HTTPS를 사용하므로 true로 설정
+        if ("localhost".equals(cookieDomain)) {
+            // 🏠 로컬 개발 환경
+            Cookie cookie = new Cookie("token", encodedToken);
+            cookie.setHttpOnly(true);
+            cookie.setPath("/");
+            cookie.setMaxAge(60 * 60);
+            response.addCookie(cookie);
+            log.info("🍪 로컬 환경 쿠키 설정 완료");
 
-        // 🔥 SameSite=None 설정 추가 (CORS 환경에서 쿠키 전송을 허용)
-        String cookieHeader = String.format("token=%s; Max-Age=%d; Path=/; HttpOnly; Domain=%s; Secure; SameSite=None",
-                URLEncoder.encode(token, StandardCharsets.UTF_8),
-                cookie.getMaxAge(),
-                cookie.getDomain());
-        response.addHeader("Set-Cookie", cookieHeader);
-        log.info("🔁 HttpOnly, Secure, SameSite=None 쿠키 설정 완료 (도메인: {})", cookieDomain);
+        } else if ("".equals(cookieDomain)) {
+            // 🚀 Render 프로덕션 환경 - 현재 도메인에서만 동작
 
+            // 방법 1: Set-Cookie 헤더로 도메인 없이 설정
+            String cookieHeader = String.format(
+                    "token=%s; Max-Age=%d; Path=/; HttpOnly; Secure; SameSite=Lax",
+                    encodedToken, 60 * 60
+            );
+            response.addHeader("Set-Cookie", cookieHeader);
+            log.info("🍪 Render 환경 쿠키 설정 (도메인 없음): {}", cookieHeader);
 
-        // ✅ 사용자 프로필 존재 여부 확인
+            // 방법 2: 백업용 쿠키 (SameSite=None으로 다른 정책 시도)
+            String backupCookieHeader = String.format(
+                    "token_backup=%s; Max-Age=%d; Path=/; HttpOnly; Secure; SameSite=None",
+                    encodedToken, 60 * 60
+            );
+            response.addHeader("Set-Cookie", backupCookieHeader);
+            log.info("🍪 백업 쿠키 설정: {}", backupCookieHeader);
+
+        } else {
+            // 기타 환경 (원래 도메인 설정 사용)
+            String cookieHeader = String.format(
+                    "token=%s; Max-Age=%d; Path=/; HttpOnly; Domain=%s; Secure; SameSite=None",
+                    encodedToken, 60 * 60, cookieDomain
+            );
+            response.addHeader("Set-Cookie", cookieHeader);
+            log.info("🍪 기타 환경 쿠키 설정 (도메인: {}): {}", cookieDomain, cookieHeader);
+        }
+
+        // 사용자 프로필 존재 여부 확인
         var user = usersRepository.findByEmail(email).orElse(null);
         boolean hasProfile = user != null && userProfileRepository.existsById(user.getId());
 
-        // ✅ 프로필 존재 여부에 따라 리디렉션 분기
         String redirectPath = hasProfile ? "/profile/view" : "/profile/new";
-        log.info("🚀 리디렉션 경로 결정됨: {}", redirectPath);
+        log.info("🚀 OAuth2 리디렉션 경로 결정됨: {}", redirectPath);
 
         response.sendRedirect(redirectPath);
     }

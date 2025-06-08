@@ -59,4 +59,4 @@ front-end:
 
 app:
   cookie:
-    domain: .onrender.com
+    domain: ""
