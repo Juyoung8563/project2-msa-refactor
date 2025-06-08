@@ -56,3 +56,7 @@ jwt:
 # 화면단 url
 front-end:
   redirect: /profile/view
+
+app:
+  cookie:
+    domain: .onrender.com
