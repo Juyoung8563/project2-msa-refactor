@@ -35,7 +35,7 @@ public class AuthController {
     private final JwtTokenProvider jwtTokenProvider;
     private final UserService userService;
 
-    @Value("${app.cookie.domain:localhost}")
+    @Value("${app.cookie.domain}")
     private String cookieDomain;
 
     @PostMapping("/login")
