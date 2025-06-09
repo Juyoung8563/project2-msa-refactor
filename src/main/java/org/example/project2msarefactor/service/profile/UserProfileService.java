@@ -57,18 +57,18 @@ public class UserProfileService {
                 .flatMap(user -> getProfile(user.getId()));
     }
     public void updateProfileByEmail(String email, UserProfileRequestDTO dto) {
-        usersRepository.findByEmail(email).ifPresent(user -> {
-            // ✅ 이메일이 바뀌었는지 체크하고 업데이트
-            if (dto.email() != null && !dto.email().isBlank() && !dto.email().equals(user.getEmail())) {
-                user.setEmail(dto.email());
-                usersRepository.save(user); // 👈 이메일도 반영
-            }
-            userProfileRepository.findById(user.getId()).ifPresentOrElse(profile -> {
-                profile.update(dto.nickname(), dto.bio(), dto.profileImageUrl(), dto.phone());
-                userProfileRepository.save(profile);
-            }, () -> {
-                saveProfile(user.getId(), dto);
-            });
-        });
+        Users user = usersRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+
+        // ✅ 이메일이 바뀌었는지 체크하고 업데이트
+        if (dto.email() != null && !dto.email().isBlank() && !dto.email().equals(user.getEmail())) {
+            user.setEmail(dto.email());
+            usersRepository.save(user); // 👈 이메일도 반영
+        }
+
+        userProfileRepository.findById(user.getId()).ifPresentOrElse(profile -> {
+            profile.update(dto.nickname(), dto.bio(), dto.profileImageUrl(), dto.phone());
+            userProfileRepository.save(profile);
+        }, () -> saveProfile(user.getId(), dto));
     }
 }
